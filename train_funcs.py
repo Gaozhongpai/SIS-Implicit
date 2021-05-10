@@ -18,6 +18,7 @@ def train_autoencoder_dataloader(dataloader_train, dataloader_val,
         model.train()
           
         tloss = []
+        tloss_lap = []
         for b, tx in enumerate(tqdm(dataloader_train)):
 
             optim.zero_grad()
@@ -47,15 +48,18 @@ def train_autoencoder_dataloader(dataloader_train, dataloader_val,
             loss.backward()
             optim.step()
             
-            tloss.append(cur_bsize * loss.item())
+            tloss.append(cur_bsize * loss_l1.item())
+            tloss_lap.append(cur_bsize * loss_lap.item())
             if writer and total_steps % eval_freq == 0:
-                writer.add_scalar('loss/loss/data_loss',loss.item(),total_steps)
+                writer.add_scalar('loss/loss/data_loss',loss_l1.item(),total_steps)
+                writer.add_scalar('loss/loss/data_loss_lap',loss_lap.item(),total_steps)
                 writer.add_scalar('training/learning_rate', optim.param_groups[0]['lr'],total_steps)
             total_steps += 1
 
         # validate
         model.eval()
         vloss = []
+        vloss_lap = []
         with torch.no_grad():
             for b, tx in enumerate(tqdm(dataloader_val)):
 
@@ -76,17 +80,23 @@ def train_autoencoder_dataloader(dataloader_train, dataloader_val,
                 loss_lap = dataloader_val.dataset.lap(tx, tx_hat)/20
                 loss = loss_l1 + loss_lap    
                 
-                vloss.append(cur_bsize * loss.item())
+                vloss.append(cur_bsize * loss_l1.item())
+                vloss_lap.append(cur_bsize * loss_lap.item())
 
         if scheduler:
             scheduler.step()
             
         epoch_tloss = sum(tloss) / float(len(dataloader_train.dataset))
         writer.add_scalar('avg_epoch_train_loss',epoch_tloss,epoch)
+        epoch_tloss_lap = sum(tloss_lap) / float(len(dataloader_train.dataset))
+        writer.add_scalar('avg_epoch_train_loss_lap',epoch_tloss_lap,epoch)
         if len(dataloader_val.dataset) > 0:
             epoch_vloss = sum(vloss) / float(len(dataloader_val.dataset))
+            epoch_vloss_lap = sum(vloss_lap) / float(len(dataloader_val.dataset))
             writer.add_scalar('avg_epoch_valid_loss', epoch_vloss,epoch)
-            io.cprint('epoch {0} | tr {1} | val {2}'.format(epoch,epoch_tloss,epoch_vloss))
+            writer.add_scalar('avg_epoch_valid_loss_lap', epoch_vloss_lap,epoch)
+            io.cprint('epoch {0} | tr {1} tr_lap {2} | val {3} val_lap {4}'.format(epoch,
+                epoch_tloss,epoch_tloss_lap,epoch_vloss,epoch_vloss_lap))
         else:
             io.cprint('epoch {0} | tr {1} '.format(epoch,epoch_tloss))
 

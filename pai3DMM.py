@@ -13,11 +13,9 @@ import trimesh
 from psbody.mesh import Mesh
 from shape_data import ShapeData
 
-from autoencoder_dataset import autoencoder_dataset as autoencoder_dataset
 from torch.utils.data import DataLoader
 
 from utils import get_adj_trigs, sparse_mx_to_torch_sparse_tensor
-from train_funcs import train_autoencoder_dataloader
 from test_funcs_generate import test_autoencoder_dataloader
 import scipy.sparse as sp
 from device import device
@@ -27,12 +25,21 @@ from utils import IOStream
 
 from sklearn.metrics.pairwise import euclidean_distances
 meshpackage = 'trimesh' # 'mpi-mesh', trimesh'
+
+generative_model = 'pai_implicit_upsample'
 root_dir = '/home/yyy/code/Neural3DMMdata'  #Neural3DMMdata'  # dfaustData'
 is_body = True if 'dfaustData' in root_dir else False
+is_upsample = True if 'upsample' in generative_model else False
 if is_body:
     from models import PaiAutoencoder, PaiNerf, PaiAutoNerf
 else:
     from modelsHead import PaiAutoencoder, PaiNerf, PaiAutoNerf
+if is_upsample:
+    from train_funcs import train_autoencoder_dataloader
+    from autoencoder_dataset import autoencoder_dataset as autoencoder_dataset
+else:
+    from train_funcs_generate import train_autoencoder_dataloader
+    from autoencoder_dataset import autoencoder_dataset_generate as autoencoder_dataset
 
 dataset = 'd3dfacs_alignments'
 name = 'sliced'
@@ -45,7 +52,6 @@ torch.cuda.get_device_name(device_idx)
 #%%
 args = {}
 
-generative_model = 'pai_implicit_mlp'
 downsample_method = 'COMA_downsample' # choose'COMA_downsample' or 'meshlab_downsample'
 
 # below are the arguments for the DFAUST run
@@ -70,14 +76,14 @@ args = {'generative_model': generative_model,
         'reference_mesh_file':reference_mesh_file, 'downsample_directory': downsample_directory,
         'checkpoint_file': 'checkpoint',
         'seed':2, 'loss':'l1',
-        'batch_size':32, 'num_epochs':300, 'eval_frequency':200, 'num_workers': 8,
+        'batch_size':64, 'num_epochs':200, 'eval_frequency':200, 'num_workers': 8,
         'filter_sizes_enc': filter_sizes_enc, 'filter_sizes_dec': filter_sizes_dec,
-        'nz':32,
+        'nz':64,
         'ds_factors': ds_factors, 'step_sizes' : step_sizes, 'dilation': dilation,
 
         'lr':1e-3,
         'regularization': 5e-5,
-        'scheduler': True, 'decay_rate': 0.99,'decay_steps':1,
+        'scheduler': True, 'decay_rate': 0.98,'decay_steps':1,
         'resume': False,
 
         'mode':'train', 'shuffle': True, 'nVal': 100, 'normalization': True}

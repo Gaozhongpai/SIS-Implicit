@@ -231,10 +231,11 @@ class PaiNerf(nn.Module):
         self.part_idx = []
         N_index_part = 0
         for name in self.name:
-            D = 6 if name == 'head' else 3
-            W = 256 if name == 'head' else 128
-            self.encoder.append(Nerf(D=D, W=W, input_ch=40*2, skips=[D//2], output_ch=latent_size))
-            self.decoder.append(Nerf(D=D, W=W, input_ch=40*4+latent_size+3, skips=[D//2], output_ch=3))    
+            DEn = 4 if name == 'head' else 3
+            DDe = 8 if name == 'head' else 6
+            W = 256 if name == 'head' else 64
+            self.encoder.append(Nerf(D=DEn, W=W, input_ch=40*2, skips=[DEn//2], output_ch=latent_size))
+            self.decoder.append(Nerf(D=DDe, W=W, input_ch=40*4+latent_size+3, skips=[DDe//2], output_ch=3))    
             self.map[name] = loadmat('./mesh_head/{}_map.mat'.format(name))['map'][self.dictionary['{}_index_From_Map'.format(name)]]
             self.map[name] = self.map_coords(torch.from_numpy(Cartesian2Spherical(self.map[name])).float()).cuda()
             self.part_idx.append(N_index_part)
