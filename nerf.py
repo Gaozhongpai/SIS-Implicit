@@ -4,6 +4,8 @@ import torch.nn.functional as F
 import numpy as np
 import math
 
+from torch.nn.modules.normalization import LayerNorm
+
 class NerfTransform(torch.nn.Module):
     def __init__(self, num_input_channels, max_freq=10):
         super().__init__()
@@ -46,13 +48,16 @@ class Nerf(nn.Module):
             nn.Linear(W, W) if i not in
             self.skips else nn.Linear(W + input_ch, W) for i in range(D - 1)
         ])
+        self.pts_norms = nn.ModuleList([nn.LayerNorm(W)] + [
+            nn.LayerNorm(W) for i in range(D - 1)
+        ])
         self.output_linear = nn.Linear(W, output_ch)
 
     def forward(self, x):
         h = x
         for i, l in enumerate(self.pts_linears):
-            h = self.pts_linears[i](h)
-            h = F.relu(h)
+            h = self.pts_norms[i](self.pts_linears[i](h))
+            h = F.gelu(h)
             if i in self.skips:
                 h = torch.cat([x, h], -1)
         outputs = self.output_linear(h)
