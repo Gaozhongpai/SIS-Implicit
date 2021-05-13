@@ -26,14 +26,17 @@ from utils import IOStream
 from sklearn.metrics.pairwise import euclidean_distances
 meshpackage = 'trimesh' # 'mpi-mesh', trimesh'
 
-generative_model = 'pai_implicit_upsample'
+generative_model = 'pai_implicit_gcn_spiral'
 root_dir = '/home/yyy/code/Neural3DMMdata'  #Neural3DMMdata'  # dfaustData'
 is_body = True if 'dfaustData' in root_dir else False
 is_upsample = True if 'upsample' in generative_model else False
+from modelsDecoder import PaiAutoencoder2
+
 if is_body:
     from models import PaiAutoencoder, PaiNerf, PaiAutoNerf
 else:
     from modelsHead import PaiAutoencoder, PaiNerf, PaiAutoNerf
+
 if is_upsample:
     from train_funcs import train_autoencoder_dataloader
     from autoencoder_dataset import autoencoder_dataset as autoencoder_dataset
@@ -63,12 +66,9 @@ kernal_size = [9, 9, 9, 9, 9]
 step_sizes = [2, 2, 1, 1, 1]
 filter_sizes_enc = [[3, 16, 32, 64, 128],[[],[],[],[],[]]]
 filter_sizes_dec = [[256, 256, 256, 256, 3],[[],[],[],[],[]]]
-dilation_flag = True
-if dilation_flag:
-    dilation=[2, 2, 1, 1, 1]
-else:
-    dilation = None
-reference_points = [[414]]  # [[3567,4051,4597]] used for COMA with 3 disconnected components
+filter_sizes_enc = [3, 16, 32, 64, 128]
+# filter_sizes_dec = [128, 64, 32, 32, 16, 3]
+filter_sizes_dec = [128, 92, 64, 32, 16, 3] ## spiral
 
 args = {'generative_model': generative_model,
         'name': name, 'data': os.path.join(root_dir, 'Processed',name),
@@ -79,7 +79,7 @@ args = {'generative_model': generative_model,
         'batch_size':64, 'num_epochs':200, 'eval_frequency':200, 'num_workers': 8,
         'filter_sizes_enc': filter_sizes_enc, 'filter_sizes_dec': filter_sizes_dec,
         'nz':64,
-        'ds_factors': ds_factors, 'step_sizes' : step_sizes, 'dilation': dilation,
+        'ds_factors': ds_factors, 'step_sizes' : step_sizes, 
 
         'lr':1e-3,
         'regularization': 5e-5,
@@ -163,15 +163,6 @@ else:
     U = downsampling_matrices['U']
     F = downsampling_matrices['F']
 
-# Needs also an extra check to enforce points to belong to different disconnected component at each hierarchy level
-print("Calculating reference points for downsampled versions..")
-for i in range(len(args['ds_factors'])):
-    if shapedata.meshpackage == 'mpi-mesh':
-        dist = euclidean_distances(M[i+1].v, M[0].v[reference_points[0]])
-    elif shapedata.meshpackage == 'trimesh':
-        dist = euclidean_distances(M[i+1].vertices, M[0].vertices[reference_points[0]])
-    reference_points.append(np.argmin(dist,axis=0).tolist())
-
 #%%
 if shapedata.meshpackage == 'mpi-mesh':
     sizes = [x.v.shape[0] for x in M]
@@ -247,16 +238,16 @@ dataloader_test = DataLoader(
     # num_workers = args['num_workers']
     )
 
-model = PaiNerf(latent_size=args['nz']).to(device)
+# model = PaiNerf(latent_size=args['nz']).to(device)
 # model = PaiAutoNerf(latent_size=args['nz']).to(device)
-# model = PaiAutoencoder(filters_enc = args['filter_sizes_enc'],
-#                         filters_dec = args['filter_sizes_dec'],
-#                         latent_size=args['nz'],
-#                         sizes=sizes,
-#                         # t_vertices=vertices,
-#                         num_neighbors=kernal_size,
-#                         x_neighbors=Adj,
-#                         D=tD, U=tU).to(device)
+model = PaiAutoencoder2(filters_enc = args['filter_sizes_enc'],
+                        filters_dec = args['filter_sizes_dec'],
+                        latent_size=args['nz'],
+                        sizes=sizes,
+                        # t_vertices=vertices,
+                        num_neighbors=kernal_size,
+                        x_neighbors=Adj,
+                        D=tD, U=tU).to(device)
 model = torch.nn.DataParallel(model)
 
 trainables_wo_index = [param for name, param in model.named_parameters()
@@ -281,7 +272,8 @@ if args['loss']=='l1':
 
 #%%
 print(model)
-params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+[print(name) for name, p in model.named_parameters() if p.requires_grad and 'module.conv.' not in name and 'fc_latent_enc' not in name]
+params = sum(p.numel() for name, p in model.named_parameters() if p.requires_grad and 'module.conv.' not in name and 'fc_latent_enc' not in name)
 print("Total number of parameters is: {}".format(params))
 
 
@@ -294,14 +286,14 @@ if args['mode'] == 'train':
 
     if args['resume']:
         print('loading checkpoint from file %s'%(os.path.join(checkpoint_path,args['checkpoint_file'])))
-        checkpoint_dict = torch.load(os.path.join(checkpoint_path,args['checkpoint_file']+'.pth.tar'),map_location=device)
+        checkpoint_dict = torch.load(os.path.join(checkpoint_path,args['checkpoint_file']+'100.pth.tar'),map_location=device)
         start_epoch = checkpoint_dict['epoch'] + 1
         model_dict = model.module.state_dict()
         pretrained_dict = checkpoint_dict['autoencoder_state_dict']
         pretrained_dict = {k: v for k, v in pretrained_dict.items() if k in model_dict}
         model_dict.update(pretrained_dict) 
         model.module.load_state_dict(pretrained_dict, strict=False)
-        #model.load_state_dict(checkpoint_dict['autoencoder_state_dict'])
+        # model.load_state_dict(checkpoint_dict['autoencoder_state_dict'])
         optim.load_state_dict(checkpoint_dict['optimizer_state_dict'])
         scheduler.load_state_dict(checkpoint_dict['scheduler_state_dict'])
         print('Resuming from epoch %s'%(str(start_epoch)))

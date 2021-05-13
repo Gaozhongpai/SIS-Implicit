@@ -17,13 +17,10 @@ def test_autoencoder_dataloader(device, model, dataloader_test, shapedata, mm_co
                 predictions = copy.deepcopy(prediction)
             else:
                 predictions = torch.cat([predictions,prediction],0) 
-                
-            if dataloader_test.dataset.dummy_node:
-                x_recon = prediction[:,:-1]
-                x = tx[:,:-1]
-            else:
-                x_recon = prediction
-                x = tx
+            
+            x = tx[:,:-1] if tx.shape[1] > shapedata_mean.shape[0] else tx
+            x_recon = prediction[:,:-1] if prediction.shape[1] > shapedata_mean.shape[0] else prediction
+
             l1_loss+= torch.mean(torch.abs(x_recon-x))*x.shape[0]/float(len(dataloader_test.dataset))
             
             x_recon = (x_recon * shapedata_std + shapedata_mean) * mm_constant

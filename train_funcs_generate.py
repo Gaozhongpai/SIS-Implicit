@@ -9,9 +9,9 @@ def train_autoencoder_dataloader(dataloader_train, dataloader_val,
                                  bsize, start_epoch, n_epochs, eval_freq, scheduler = None,
                                  writer=None, save_recons=True, shapedata = None,
                                  metadata_dir=None, samples_dir = None, checkpoint_path=None):
-    if not shapedata.normalization:
-        shapedata_mean = torch.Tensor(shapedata.mean).to(device)
-        shapedata_std = torch.Tensor(shapedata.std).to(device)
+    # if not shapedata.normalization:
+    shapedata_mean = torch.Tensor(shapedata.mean).to(device)
+    shapedata_std = torch.Tensor(shapedata.std).to(device)
     
     total_steps = start_epoch*len(dataloader_train)
     for epoch in range(start_epoch, n_epochs):
@@ -25,7 +25,8 @@ def train_autoencoder_dataloader(dataloader_train, dataloader_val,
             tx = sample_dict['points'].to(device)
             cur_bsize = tx.shape[0]
             tx_hat = model(tx)
-            tx = tx[:,:-1] if tx.shape[1] > tx_hat.shape[1] else tx
+            tx = tx[:,:-1] if tx.shape[1] > shapedata_mean.shape[0] else tx
+            tx_hat = tx_hat[:,:-1] if tx_hat.shape[1] > shapedata_mean.shape[0] else tx_hat
             loss = loss_fn(tx, tx_hat)  
 
             loss.backward()
@@ -47,7 +48,8 @@ def train_autoencoder_dataloader(dataloader_train, dataloader_val,
                 cur_bsize = tx.shape[0]
 
                 tx_hat = model(tx)               
-                tx = tx[:,:-1] if tx.shape[1] > tx_hat.shape[1] else tx
+                tx = tx[:,:-1] if tx.shape[1] > shapedata_mean.shape[0] else tx
+                tx_hat = tx_hat[:,:-1] if tx_hat.shape[1] > shapedata_mean.shape[0] else tx_hat
                 loss = loss_fn(tx, tx_hat)  
 
                 vloss.append(cur_bsize * loss.item())

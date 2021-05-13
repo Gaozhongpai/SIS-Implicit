@@ -57,6 +57,7 @@ class PaiConv(nn.Module):
         x_res = self.mlp_out(x.view(-1, self.in_c)).view(bsize, -1, self.out_c)
         return out_feat + x_res
 
+
 class PaiAutoencoder(nn.Module):
     def __init__(self, filters_enc, filters_dec, latent_size, sizes, num_neighbors, x_neighbors, D, U, activation='elu'):
         super(PaiAutoencoder, self).__init__()
@@ -100,8 +101,9 @@ class PaiAutoencoder(nn.Module):
         self.map = dict() 
 
         for name in self.name:
-            D = 8 if name == 'head' else 3
-            self.decoder.append(Nerf(D=D, W=128+16, input_ch=40+latent_size, skips=[D//2], output_ch=3))    
+            D = 6 if name == 'head' else 3
+            W = 128 if name == 'head' else 64
+            self.decoder.append(Nerf(D=D, W=W, input_ch=40+latent_size, skips=[D//2], output_ch=3))    
             self.map[name] = loadmat('./mesh_head/{}_map.mat'.format(name))['map'][self.dictionary['{}_index_From_Map'.format(name)]]
             self.map[name] = self.map_coords(torch.from_numpy(Cartesian2Spherical(self.map[name])).float()).cuda()
         self.decoder = nn.ModuleList(self.decoder)   

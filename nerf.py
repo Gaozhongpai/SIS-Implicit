@@ -48,15 +48,15 @@ class Nerf(nn.Module):
             nn.Linear(W, W) if i not in
             self.skips else nn.Linear(W + input_ch, W) for i in range(D - 1)
         ])
-        self.pts_norms = nn.ModuleList([nn.LayerNorm(W)] + [
-            nn.LayerNorm(W) for i in range(D - 1)
-        ])
+        # self.pts_norms = nn.ModuleList([nn.LayerNorm(W)] + [
+        #     nn.LayerNorm(W) for i in range(D - 1)
+        # ])
         self.output_linear = nn.Linear(W, output_ch)
 
     def forward(self, x):
         h = x
         for i, l in enumerate(self.pts_linears):
-            h = self.pts_norms[i](self.pts_linears[i](h))
+            h = self.pts_linears[i](h)
             h = F.gelu(h)
             if i in self.skips:
                 h = torch.cat([x, h], -1)
