@@ -16,7 +16,6 @@ from shape_data import ShapeData
 from torch.utils.data import DataLoader
 
 from utils import get_adj_trigs, sparse_mx_to_torch_sparse_tensor
-from test_funcs_generate import test_autoencoder_dataloader
 import scipy.sparse as sp
 from device import device
 import torch
@@ -26,7 +25,9 @@ from utils import IOStream
 from sklearn.metrics.pairwise import euclidean_distances
 meshpackage = 'trimesh' # 'mpi-mesh', trimesh'
 
-generative_model = 'pai_implicit_gcn_spiral'
+## pai_implicit_upsample ## pai_implicit_gcn_LSA ## pai_implicit_gcn_spiral
+## pai_implicit_gcn_mlp ## pai_implicit_gcn_coma ## pai_implicit_gcn_feast
+generative_model = 'pai_implicit_upsample'  
 root_dir = '/home/yyy/code/Neural3DMMdata'  #Neural3DMMdata'  # dfaustData'
 is_body = True if 'dfaustData' in root_dir else False
 is_upsample = True if 'upsample' in generative_model else False
@@ -35,13 +36,15 @@ from modelsDecoder import PaiAutoencoder2
 if is_body:
     from models import PaiAutoencoder, PaiNerf, PaiAutoNerf
 else:
-    from modelsHead import PaiAutoencoder, PaiNerf, PaiAutoNerf
+    from modelsHead import PaiAutoencoder, PaiAutoMLP, PaiNerf, PaiAutoNerf
 
 if is_upsample:
     from train_funcs import train_autoencoder_dataloader
+    from test_funcs import test_autoencoder_dataloader
     from autoencoder_dataset import autoencoder_dataset as autoencoder_dataset
 else:
     from train_funcs_generate import train_autoencoder_dataloader
+    from test_funcs_generate import test_autoencoder_dataloader
     from autoencoder_dataset import autoencoder_dataset_generate as autoencoder_dataset
 
 dataset = 'd3dfacs_alignments'
@@ -66,9 +69,11 @@ kernal_size = [9, 9, 9, 9, 9]
 step_sizes = [2, 2, 1, 1, 1]
 filter_sizes_enc = [[3, 16, 32, 64, 128],[[],[],[],[],[]]]
 filter_sizes_dec = [[256, 256, 256, 256, 3],[[],[],[],[],[]]]
-filter_sizes_enc = [3, 16, 32, 64, 128]
-# filter_sizes_dec = [128, 64, 32, 32, 16, 3]
-filter_sizes_dec = [128, 92, 64, 32, 16, 3] ## spiral
+# filter_sizes_enc = [3, 16, 32, 64, 128]
+# filter_sizes_dec = [128, 64, 32, 32, 16, 3]  ## LSA
+# filter_sizes_dec = [128, 92, 64, 32, 16, 3] ## spiral
+# filter_sizes_dec = [128, 92, 64, 48, 32, 3] ## coma
+filter_sizes_dec = [128, 88, 64, 48, 32, 3] ## feast
 
 args = {'generative_model': generative_model,
         'name': name, 'data': os.path.join(root_dir, 'Processed',name),
@@ -76,15 +81,15 @@ args = {'generative_model': generative_model,
         'reference_mesh_file':reference_mesh_file, 'downsample_directory': downsample_directory,
         'checkpoint_file': 'checkpoint',
         'seed':2, 'loss':'l1',
-        'batch_size':64, 'num_epochs':200, 'eval_frequency':200, 'num_workers': 8,
+        'batch_size':64, 'num_epochs':300, 'eval_frequency':200, 'num_workers': 8,
         'filter_sizes_enc': filter_sizes_enc, 'filter_sizes_dec': filter_sizes_dec,
         'nz':64,
         'ds_factors': ds_factors, 'step_sizes' : step_sizes, 
 
-        'lr':1e-3,
+        'lr':1e-4,
         'regularization': 5e-5,
-        'scheduler': True, 'decay_rate': 0.98,'decay_steps':1,
-        'resume': False,
+        'scheduler': True, 'decay_rate': 0.99,'decay_steps':1,
+        'resume': True,
 
         'mode':'train', 'shuffle': True, 'nVal': 100, 'normalization': True}
 
@@ -238,16 +243,19 @@ dataloader_test = DataLoader(
     # num_workers = args['num_workers']
     )
 
-# model = PaiNerf(latent_size=args['nz']).to(device)
+model = PaiNerf(latent_size=args['nz']).to(device)
 # model = PaiAutoNerf(latent_size=args['nz']).to(device)
-model = PaiAutoencoder2(filters_enc = args['filter_sizes_enc'],
-                        filters_dec = args['filter_sizes_dec'],
-                        latent_size=args['nz'],
-                        sizes=sizes,
-                        # t_vertices=vertices,
-                        num_neighbors=kernal_size,
-                        x_neighbors=Adj,
-                        D=tD, U=tU).to(device)
+# model = PaiAutoMLP(shape_mean=shapedata.mean,
+#                         filters_enc = args['filter_sizes_enc'],
+#                         filters_dec = args['filter_sizes_dec'],
+#                         latent_size=args['nz'],
+#                         sizes=sizes,
+#                         # t_vertices=vertices,
+#                         num_neighbors=kernal_size,
+#                         x_neighbors=Adj,
+#                         D=tD, U=tU, 
+#                         # A=A
+#                         ).to(device)
 model = torch.nn.DataParallel(model)
 
 trainables_wo_index = [param for name, param in model.named_parameters()
@@ -286,7 +294,7 @@ if args['mode'] == 'train':
 
     if args['resume']:
         print('loading checkpoint from file %s'%(os.path.join(checkpoint_path,args['checkpoint_file'])))
-        checkpoint_dict = torch.load(os.path.join(checkpoint_path,args['checkpoint_file']+'100.pth.tar'),map_location=device)
+        checkpoint_dict = torch.load(os.path.join(checkpoint_path,args['checkpoint_file']+'.pth.tar'),map_location=device)
         start_epoch = checkpoint_dict['epoch'] + 1
         model_dict = model.module.state_dict()
         pretrained_dict = checkpoint_dict['autoencoder_state_dict']
@@ -294,8 +302,8 @@ if args['mode'] == 'train':
         model_dict.update(pretrained_dict) 
         model.module.load_state_dict(pretrained_dict, strict=False)
         # model.load_state_dict(checkpoint_dict['autoencoder_state_dict'])
-        optim.load_state_dict(checkpoint_dict['optimizer_state_dict'])
-        scheduler.load_state_dict(checkpoint_dict['scheduler_state_dict'])
+        # optim.load_state_dict(checkpoint_dict['optimizer_state_dict'])
+        # scheduler.load_state_dict(checkpoint_dict['scheduler_state_dict'])
         print('Resuming from epoch %s'%(str(start_epoch)))
     else:
         start_epoch = 0

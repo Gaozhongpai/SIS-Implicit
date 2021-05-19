@@ -69,7 +69,7 @@ def train_autoencoder_dataloader(dataloader_train, dataloader_val,
             io.cprint('epoch {0} | tr {1} '.format(epoch,epoch_tloss))
             # print('epoch {0} | tr {1} '.format(epoch,epoch_tloss))
 
-        shape_dict = model.state_dict()
+        shape_dict = model.module.state_dict()
         shape_dict = {k: v for k, v in shape_dict.items() if 'D.' not in k and 'U.' not in k}
         torch.save({'epoch': epoch,
             'autoencoder_state_dict': shape_dict,  #model.state_dict(),

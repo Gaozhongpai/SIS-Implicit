@@ -85,9 +85,9 @@ class ShapeData(object):
                 print('Vertices not normalized')
 
 
-    def save_meshes(self, filename, meshes, mesh_indices):
+    def save_meshes(self, filename, meshes, mesh_indices, is_norm=True):
         for i in range(meshes.shape[0]):
-            if self.normalization:
+            if is_norm:
                 vertices = meshes[i].reshape((self.n_vertex, self.n_features))*self.std.numpy() + self.mean.numpy()
             else:
                 vertices = meshes[i].reshape((self.n_vertex, self.n_features))

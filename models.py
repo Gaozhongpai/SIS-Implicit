@@ -100,8 +100,8 @@ class PaiAutoencoder(nn.Module):
         self.decoder = [] 
         self.map = dict() 
         for name in self.name:
-            D = 6 if name == 'torso' or name == 'head' else 4
-            self.decoder.append(Nerf(D=D, W=80, input_ch=40+latent_size, skips=[D//2], output_ch=3))    
+            D = 5 if name == 'torso' or name == 'head' else 4
+            self.decoder.append(Nerf(D=D, W=101, input_ch=40+latent_size, skips=[D//2], output_ch=3))    
             self.map[name] = loadmat('./mesh_body/{}_map.mat'.format(name))['map'][self.dictionary['{}_index_From_Map'.format(name)]]
             self.map[name] = self.map_coords(torch.from_numpy(Cartesian2Spherical(self.map[name])).float()).cuda()
         self.decoder = nn.ModuleList(self.decoder)   
@@ -143,6 +143,91 @@ class PaiAutoencoder(nn.Module):
             z_sub = z[:, None].repeat(1, map.shape[1], 1)
             f_vertice = self.decoder[i](torch.cat([z_sub, map], dim=-1))
             verts[:, self.dictionary['{}_index_From_Template'.format(name)]] = f_vertice
+        return verts
+
+    def forward(self,x):
+        bsize = x.size(0)
+        z = self.encode(x)
+        x = self.decode(z)
+        return x
+
+class PaiAutoMLP(nn.Module):
+    def __init__(self, shape_mean, filters_enc, filters_dec, latent_size, sizes, num_neighbors, x_neighbors, D, U, activation='elu'):
+        super(PaiAutoMLP, self).__init__()
+        self.latent_size = latent_size
+        self.sizes = sizes
+        self.x_neighbors = [torch.cat([torch.cat([torch.arange(x.shape[0]-1), torch.tensor([-1])]).unsqueeze(1), x], 1) for x in x_neighbors]
+        #self.x_neighbors = [x.float().cuda() for x in x_neighbors]
+        self.filters_enc = filters_enc
+        self.filters_dec = filters_dec
+        self.num_neighbors = num_neighbors
+        self.D = [nn.Parameter(x, False) for x in D]
+        self.D = nn.ParameterList(self.D)
+        self.U = [nn.Parameter(x, False) for x in U]
+        self.U = nn.ParameterList(self.U)
+        self.shape_mean = shape_mean.cuda()
+
+        self.name = ['head', 'torso', 'left_arm', 'right_arm', 'left_leg', 
+                    'right_leg', 'left_hand', 'right_hand', 'left_foot', 'right_foot']
+        self.dictionary = torch.load('./mesh_body/body_index.tch')
+        self.map_coords = NerfTransform(2, 10)
+
+        self.eps = 1e-7
+        #self.reset_parameters()
+        #self.device = device
+        self.activation = activation
+        self.conv = []
+        input_size = filters_enc[0][0]
+        for i in range(len(num_neighbors)-1):
+            if filters_enc[1][i]:
+                self.conv.append(PaiConv(self.x_neighbors[i].shape[0], input_size, num_neighbors[i], filters_enc[1][i],
+                                            activation=self.activation))
+                input_size = filters_enc[1][i]
+
+            self.conv.append(PaiConv(self.x_neighbors[i].shape[0], input_size, num_neighbors[i], filters_enc[0][i+1],
+                                        activation=self.activation))
+            input_size = filters_enc[0][i+1]
+
+        self.conv = nn.ModuleList(self.conv)   
+        self.fc_latent_enc = nn.Linear((sizes[-1]+1)*input_size, latent_size)
+
+        D = 8
+        self.decoder = Nerf(D=D, W=256+14, input_ch=3+latent_size, skips=[D//2], output_ch=3)
+
+    def poolwT(self, x, L):
+        Mp = L.shape[0]
+        N, M, Fin = x.shape
+        # Rescale transform Matrix L and store as a TF sparse tensor. Copy to not modify the shared L.
+        x = x.permute(1, 2, 0).contiguous()  #M x Fin x N
+        x = x.view(M, Fin * N)  # M x Fin*N
+
+        x = torch.spmm(L, x)  # Mp x Fin*N
+        x = x.view(Mp, Fin, N)  # Mp x Fin x N
+        x = x.permute(2, 0, 1).contiguous()   # N x Mp x Fin
+        return x
+
+    def encode(self,x):
+        bsize = x.size(0)
+        S = self.x_neighbors
+        D = self.D
+        
+        j = 0
+        for i in range(len(self.num_neighbors)-1):
+            x = self.conv[j](x,S[i].repeat(bsize,1,1))
+            j+=1
+            if self.filters_enc[1][i]:
+                x = self.conv[j](x,S[i].repeat(bsize,1,1))
+                j+=1
+            #x = torch.matmul(D[i],x)
+            x = self.poolwT(x, D[i])
+        x = x.view(bsize,-1)
+        return self.fc_latent_enc(x)
+    
+    def decode(self,z):
+        bsize = z.shape[0]
+        verts = self.shape_mean[None].repeat(bsize, 1, 1)
+        z = z[:, None].repeat(1, verts.shape[1], 1)
+        verts = self.decoder(torch.cat([verts,  z], dim=-1))
         return verts
 
     def forward(self,x):
@@ -229,14 +314,19 @@ class PaiNerf(nn.Module):
 
         self.encoder = []
         self.decoder = [] 
+        self.mlp = []
+        self.tmptmlp = []
         self.map = dict() 
         self.part_idx = []
         N_index_part = 0
+        num_base = 32
         for name in self.name:
             D = 6 if name == 'torso' or name == 'head' else 4
-            W = 128 if name == 'torso' or name == 'head' else 64
+            W = 256 if name == 'torso' or name == 'head' else 128
             self.encoder.append(Nerf(D=D, W=W, input_ch=40*2, skips=[D//2], output_ch=latent_size))
-            self.decoder.append(Nerf(D=D, W=W, input_ch=40*4+latent_size+3, skips=[D//2], output_ch=3))    
+            self.decoder.append(Nerf(D=D, W=W, input_ch=40+latent_size*4, skips=[D//2], output_ch=3))    
+            self.mlp.append(nn.Linear(40*4+3, num_base))
+            self.tmptmlp.append(nn.Linear(40*4+3, 1))
             self.map[name] = loadmat('./mesh_body/{}_map.mat'.format(name))['map'][self.dictionary['{}_index_From_Map'.format(name)]]
             self.map[name] = self.map_coords(torch.from_numpy(Cartesian2Spherical(self.map[name])).float()).cuda()
             self.part_idx.append(N_index_part)
@@ -244,10 +334,17 @@ class PaiNerf(nn.Module):
         self.part_idx.append(N_index_part)
         self.part_idx = torch.tensor(self.part_idx)
         self.encoder = nn.ModuleList(self.encoder)   
-        self.decoder = nn.ModuleList(self.decoder)   
+        self.decoder = nn.ModuleList(self.decoder) 
+        self.mlp = nn.ModuleList(self.mlp)    
+        self.tmptmlp = nn.ModuleList(self.tmptmlp)
+
+        self.adjweight = nn.Parameter(torch.randn(num_base, 4, 4), requires_grad=True)
+        self.adjweight.data = torch.eye(4).unsqueeze(0).expand_as(self.adjweight)
+        self.softmax = nn.Softmax(dim=2)
+        self.temp_factor = 100
 
     ### random every batch ###
-    def forward(self, verts_init, coords, bcoords, trilist, first_idx):
+    def forward_test(self, verts_init, coords, bcoords, trilist, first_idx):
         bsize = verts_init.size(0)
         num_pts = trilist.shape[0]
 
@@ -262,20 +359,29 @@ class PaiNerf(nn.Module):
 
         t_coords = coords[:, trilist]
         t = verts[:, trilist]
-        f_vertices = torch.sum(t * bcoords[None, :, :, None], axis=2)
-        f_vertices = torch.cat([f_vertices, bcoords[None].repeat(bsize, 1, 1)], dim=-1)
+        f_vertices = torch.sum(t * bcoords[None, :, :, None], dim=2)
+        f_vertices_diff = (t - f_vertices[:, :, None]).view(bsize, num_pts, 3, -1)
+        f_vertices = torch.cat([f_vertices[:, :, None], f_vertices_diff], dim=2)
 
         verts = torch.empty([bsize, num_pts, 3]).to(verts_init)
         for i, name in enumerate(self.name):
             f_vertice = f_vertices[:, self.part_idx[i]:self.part_idx[i+1]]
             t_coord = t_coords[:, self.part_idx[i]:self.part_idx[i+1]]
+            bcoord = bcoords[self.part_idx[i]:self.part_idx[i+1]]
             map = self.map[name][None].repeat(bsize, 1, 1)
-            t_coord = (t_coord - map[:, :, None]).view(bsize, map.shape[1], -1)
-            f_vertice = self.decoder[i](torch.cat([f_vertice, map, t_coord], dim=-1))
+            
+            t_coord_diff = (t_coord - map[:, :, None]).view(bsize, map.shape[1], -1)
+            t_coord = torch.cat([map, t_coord_diff, bcoord[None].repeat(bsize, 1, 1)], dim=2)
+            tmpt = torch.sigmoid(self.tmptmlp[i](t_coord))*(0.1 - 1.0/self.temp_factor) + 1.0/self.temp_factor 
+            coeffi =  self.softmax(self.mlp[i](t_coord)/tmpt)
+            adjweight = torch.einsum('bns,skt->bnkt', coeffi, self.adjweight)
+            
+            f_vertice = torch.einsum('bnkf,bnkt->bnft', f_vertice, adjweight).view(bsize, map.shape[1], -1)
+            f_vertice = self.decoder[i](torch.cat([f_vertice, map], dim=-1))
             verts[:, self.dictionary['{}_index_From_Template'.format(name)]] = f_vertice
         return verts
 
-    def forward_test(self, verts_init, coords, bcoords, trilist, first_idx):
+    def forward(self, verts_init, coords, bcoords, trilist, first_idx):
         bsize = verts_init.size(0)
         t = verts_init[:, trilist]
         verts_init = torch.sum(t * bcoords[None, :, :, None], axis=2)

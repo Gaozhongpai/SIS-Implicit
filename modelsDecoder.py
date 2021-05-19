@@ -6,7 +6,8 @@ import copy
 from numpy import inf
 import torch.nn.functional as F
 import math
-
+from graph_utils import laplacian, sparse_mx_to_torch_sparse_tensor
+import numpy as np
 
 class PaiConv(nn.Module):
     def __init__(self, num_pts, in_c, num_neighbor, out_c, activation='elu',bias=True): # ,device=None):
@@ -178,9 +179,6 @@ class PaiConvSpiral(nn.Module):
         neighbor_index = neighbor_index.view(bsize*num_pts*num_neighbor) # [1d array of batch,vertx,vertx-adj]
         batch_index = torch.arange(bsize, device=x.device).view(-1,1).repeat([1,num_pts*num_neighbor]).view(-1).long() 
         x_neighbors = x[batch_index,neighbor_index,:].view(bsize, num_pts, num_neighbor*feats)
-        # x_neighbors = x_neighbors.view(num_pts, bsize*feats, num_neighbor)     
-        # weight = self.softmax(torch.bmm(torch.transpose(x_neighbors, 1, 2), x_neighbors))
-        # x_neighbors = torch.bmm(x_neighbors, weight) #.view(num_pts, feats, num_neighbor)
         out_feat = self.activation(self.conv(x_neighbors)).view(bsize,num_pts,self.out_c)
         out_feat = out_feat * self.zero_padding.to(out_feat.device)
         return out_feat
@@ -236,7 +234,7 @@ class FeaStConv(nn.Module):
 
 
 class PaiAutoencoder2(nn.Module):
-    def __init__(self, filters_enc, filters_dec, latent_size, sizes, num_neighbors, x_neighbors, D, U, activation = 'elu'):
+    def __init__(self, filters_enc, filters_dec, latent_size, sizes, num_neighbors, x_neighbors, D, U, A, activation = 'elu'):
         super(PaiAutoencoder2, self).__init__()
         self.latent_size = latent_size
         self.sizes = sizes
@@ -249,6 +247,18 @@ class PaiAutoencoder2(nn.Module):
         self.D = nn.ParameterList(self.D)
         self.U = [nn.Parameter(x, False) for x in U]
         self.U = nn.ParameterList(self.U)
+
+        print("Computing Graph Laplacians ..")
+        self.A = []
+        for x in A:
+            x.data = np.ones(x.data.shape)
+            # build symmetric adjacency matrix
+            x = x + x.T.multiply(x.T > x) - x.multiply(x.T > x)
+            #x = x + sp.eye(x.shape[0])
+            self.A.append(x.astype('float32'))
+        self.L = [laplacian(a, normalized=True) for a in self.A]
+        self.L = [nn.Parameter(sparse_mx_to_torch_sparse_tensor(x, is_L=True), False) for x in self.L]
+        self.L = nn.ParameterList(self.L)
 
         self.eps = 1e-7
         #self.reset_parameters()
@@ -269,13 +279,13 @@ class PaiAutoencoder2(nn.Module):
         self.dconv = []
         input_size = filters_dec[0]
         for i in range(len(num_neighbors)-1):
-            self.dconv.append(PaiConvSpiral(self.x_neighbors[-2-i].shape[0], input_size, num_neighbors[-2-i], filters_dec[i+1],
+            self.dconv.append(FeaStConv(self.x_neighbors[-2-i].shape[0], input_size, num_neighbors[-2-i], filters_dec[i+1],
                                             activation=self.activation))
             input_size = filters_dec[i+1]  
 
             if i == len(num_neighbors)-2:
                 input_size = filters_dec[-2]
-                self.dconv.append(PaiConvSpiral(self.x_neighbors[-2-i].shape[0], input_size, num_neighbors[-2-i], filters_dec[-1],
+                self.dconv.append(FeaStConv(self.x_neighbors[-2-i].shape[0], input_size, num_neighbors[-2-i], filters_dec[-1],
                                                 activation='identity'))
                     
         self.dconv = nn.ModuleList(self.dconv)
@@ -318,6 +328,21 @@ class PaiAutoencoder2(nn.Module):
             x = self.poolwT(x, U[-1-i])
             x = self.dconv[i](x, S[-2-i].repeat(bsize,1,1))
         x = self.dconv[-1](x, S[0].repeat(bsize,1,1))
+        return x
+    
+    def decodeChev(self,z):
+        bsize = z.size(0)
+        S = self.x_neighbors
+        U = self.U
+        x = self.fc_latent_dec(z)
+        x = x.view(bsize,self.sizes[-1]+1,-1)
+        for i in range(len(self.num_neighbors)-1):
+            #x = torch.matmul(U[-1-i],x)
+            x = self.poolwT(x, U[-1-i])
+            x = self.dconv[i](x[:, :-1],self.L[-2-i])
+            x = torch.cat([x, torch.zeros(bsize, 1, x.shape[-1]).to(x)], dim=1)
+        x = self.dconv[-1](x[:, :-1],self.L[0])
+        x = torch.cat([x, torch.zeros(bsize, 1, x.shape[-1]).to(x)], dim=1)
         return x
 
     def forward(self,x):

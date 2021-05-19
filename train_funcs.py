@@ -41,6 +41,7 @@ def train_autoencoder_dataloader(dataloader_train, dataloader_val,
             # shapedata.save_meshes(os.path.join(samples_dir,'epoch_{0}'.format(epoch)),
             #                                      msh, mesh_ind)
 
+            tx = tx * shapedata_std + shapedata_mean
             loss_l1 = loss_fn(tx, tx_hat)       
             loss_lap = dataloader_train.dataset.lap(tx, tx_hat)/20
             loss = loss_l1 + loss_lap    
@@ -75,7 +76,9 @@ def train_autoencoder_dataloader(dataloader_train, dataloader_val,
                     bcoords.to(device), trilist.to(device), first_idx.to(device)
                 cur_bsize = tx.shape[0]
 
-                tx_hat = model(verts_init, coords, bcoords, trilist, first_idx)               
+                tx_hat = model(verts_init, coords, bcoords, trilist, first_idx)    
+                
+                tx = tx * shapedata_std + shapedata_mean           
                 loss_l1 = loss_fn(tx, tx_hat)       
                 loss_lap = dataloader_val.dataset.lap(tx, tx_hat)/20
                 loss = loss_l1 + loss_lap    
@@ -83,8 +86,8 @@ def train_autoencoder_dataloader(dataloader_train, dataloader_val,
                 vloss.append(cur_bsize * loss_l1.item())
                 vloss_lap.append(cur_bsize * loss_lap.item())
 
-        if scheduler:
-            scheduler.step()
+        # if scheduler:
+        #    scheduler.step()
             
         epoch_tloss = sum(tloss) / float(len(dataloader_train.dataset))
         writer.add_scalar('avg_epoch_train_loss',epoch_tloss,epoch)
@@ -95,8 +98,8 @@ def train_autoencoder_dataloader(dataloader_train, dataloader_val,
             epoch_vloss_lap = sum(vloss_lap) / float(len(dataloader_val.dataset))
             writer.add_scalar('avg_epoch_valid_loss', epoch_vloss,epoch)
             writer.add_scalar('avg_epoch_valid_loss_lap', epoch_vloss_lap,epoch)
-            io.cprint('epoch {0} | tr {1} tr_lap {2} | val {3} val_lap {4}'.format(epoch,
-                epoch_tloss,epoch_tloss_lap,epoch_vloss,epoch_vloss_lap))
+            io.cprint('epoch {0} | tr {1} tr_lap {2} | val {3} val_lap {4} | lr {5}'.format(epoch,
+                epoch_tloss,epoch_tloss_lap,epoch_vloss,epoch_vloss_lap,optim.param_groups[1]['lr']))
         else:
             io.cprint('epoch {0} | tr {1} '.format(epoch,epoch_tloss))
 
@@ -122,11 +125,11 @@ def train_autoencoder_dataloader(dataloader_train, dataloader_val,
                     mesh_ind = [0]
                     msh = tx[mesh_ind[0]:1,:tx_hat.shape[1],:].detach().cpu().numpy()
                     shapedata.save_meshes(os.path.join(samples_dir,'input_epoch_{0}'.format(epoch)),
-                                                     msh, mesh_ind)
+                                                     msh, mesh_ind, False)
                 mesh_ind = [0,1]
                 msh = tx_hat[mesh_ind[0]:1,:tx_hat.shape[1],:].detach().cpu().numpy()
                 shapedata.save_meshes(os.path.join(samples_dir,'epoch_{0}'.format(epoch)),
-                                                 msh, mesh_ind)
+                                                 msh, mesh_ind, False)
 
     print('~FIN~')
 

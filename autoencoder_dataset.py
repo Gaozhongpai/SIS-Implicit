@@ -94,12 +94,12 @@ class autoencoder_dataset(Dataset):
                     'right_leg', 'left_hand', 'right_hand', 'left_foot', 'right_foot']
             folder = 'mesh_body'
             self.dictionary = torch.load('./{}/body_index.tch'.format(folder))
-            self.nsample = 2400
+            self.nsample = 1000
         else:
             self.name = ['head', 'left_eye', 'right_eye']
             folder = 'mesh_head'
             self.dictionary = torch.load('./{}/head_index.tch'.format(folder))
-            self.nsample = 2000
+            self.nsample = 1000
 
         self.map = {}
         self.map_coord = {}
