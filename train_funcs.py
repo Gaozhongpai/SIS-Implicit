@@ -41,9 +41,8 @@ def train_autoencoder_dataloader(dataloader_train, dataloader_val,
             # shapedata.save_meshes(os.path.join(samples_dir,'epoch_{0}'.format(epoch)),
             #                                      msh, mesh_ind)
 
-            tx = tx * shapedata_std + shapedata_mean
-            loss_l1 = loss_fn(tx, tx_hat)       
-            loss_lap = dataloader_train.dataset.lap(tx, tx_hat)/20
+            loss_l1 = loss_fn(tx, tx_hat)*20       
+            loss_lap = dataloader_train.dataset.lap(tx, tx_hat)
             loss = loss_l1 + loss_lap    
 
             loss.backward()
@@ -78,9 +77,8 @@ def train_autoencoder_dataloader(dataloader_train, dataloader_val,
 
                 tx_hat = model(verts_init, coords, bcoords, trilist, first_idx)    
                 
-                tx = tx * shapedata_std + shapedata_mean           
-                loss_l1 = loss_fn(tx, tx_hat)       
-                loss_lap = dataloader_val.dataset.lap(tx, tx_hat)/20
+                loss_l1 = loss_fn(tx, tx_hat)*20        
+                loss_lap = dataloader_val.dataset.lap(tx, tx_hat)
                 loss = loss_l1 + loss_lap    
                 
                 vloss.append(cur_bsize * loss_l1.item())
@@ -125,11 +123,11 @@ def train_autoencoder_dataloader(dataloader_train, dataloader_val,
                     mesh_ind = [0]
                     msh = tx[mesh_ind[0]:1,:tx_hat.shape[1],:].detach().cpu().numpy()
                     shapedata.save_meshes(os.path.join(samples_dir,'input_epoch_{0}'.format(epoch)),
-                                                     msh, mesh_ind, False)
+                                                     msh, mesh_ind)
                 mesh_ind = [0,1]
                 msh = tx_hat[mesh_ind[0]:1,:tx_hat.shape[1],:].detach().cpu().numpy()
                 shapedata.save_meshes(os.path.join(samples_dir,'epoch_{0}'.format(epoch)),
-                                                 msh, mesh_ind, False)
+                                                 msh, mesh_ind)
 
     print('~FIN~')
 

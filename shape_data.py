@@ -85,10 +85,10 @@ class ShapeData(object):
                 print('Vertices not normalized')
 
 
-    def save_meshes(self, filename, meshes, mesh_indices, is_norm=True):
+    def save_meshes(self, filename, meshes, mesh_indices):
         for i in range(meshes.shape[0]):
-            if is_norm:
-                vertices = meshes[i].reshape((self.n_vertex, self.n_features))*self.std.numpy() + self.mean.numpy()
+            if self.normalization:
+                vertices = meshes[i].reshape((self.n_vertex, self.n_features)) # *self.std.numpy() + self.mean.numpy()
             else:
                 vertices = meshes[i].reshape((self.n_vertex, self.n_features))
             if self.meshpackage == 'trimesh':

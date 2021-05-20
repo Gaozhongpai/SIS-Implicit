@@ -6,7 +6,6 @@ from numpy import linalg as LA
 from psbody.mesh import Mesh
 from pymeshfix import _meshfix
 from scipy.spatial import ConvexHull
-from plyfile import PlyData, PlyElement
 import torch
 import cv2
 
@@ -35,6 +34,7 @@ def barycentric_points_from_contained_points(vertics, trilist, points, tri_index
 
     return np.vstack([u, v, w]).T
 
+## use meshlab butterfly subdivision
 
 mesh = trimesh.load('./mesh_head/head_right_high1.obj', process = False)
 mesh_up = Mesh(filename='./mesh_head/head_right_high2.obj')
@@ -47,4 +47,4 @@ verts = np.sum(verts * bcoords[:, :, None], axis=1)
 verts = verts / LA.norm(verts, axis=1, keepdims=True)
 map_up = Mesh(v=verts, f=mesh_up.f)
 map_up.write_obj('./mesh_head/head_right_map_high2.obj')
-savemat('./mesh_head/right_eye_map_high2.mat', {'v': mesh_up.v, 'f': mesh_up.f+1, 'map': map.v})
+savemat('./mesh_head/right_eye_map_high2.mat', {'v': mesh_up.v, 'f': mesh_up.f+1, 'map': map_up.v})

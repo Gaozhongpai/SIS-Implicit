@@ -40,8 +40,8 @@ else:
 
 if is_upsample:
     from train_funcs import train_autoencoder_dataloader
-    from test_funcs import test_autoencoder_dataloader
-    from autoencoder_dataset import autoencoder_dataset as autoencoder_dataset
+    from test_funcs_evaluate import test_autoencoder_dataloader
+    from autoencoder_dataset_evaluate import autoencoder_dataset as autoencoder_dataset
 else:
     from train_funcs_generate import train_autoencoder_dataloader
     from test_funcs_generate import test_autoencoder_dataloader
@@ -86,12 +86,12 @@ args = {'generative_model': generative_model,
         'nz':64,
         'ds_factors': ds_factors, 'step_sizes' : step_sizes, 
 
-        'lr':1e-4,
+        'lr':1e-3,
         'regularization': 5e-5,
-        'scheduler': True, 'decay_rate': 0.99,'decay_steps':1,
+        'scheduler': True, 'decay_rate': 0.98,'decay_steps':1,
         'resume': True,
 
-        'mode':'train', 'shuffle': True, 'nVal': 100, 'normalization': True}
+        'mode':'test', 'shuffle': True, 'nVal': 100, 'normalization': True}
 
 args['results_folder'] = os.path.join(args['results_folder'],'latent_'+str(args['nz']))
 
@@ -302,8 +302,8 @@ if args['mode'] == 'train':
         model_dict.update(pretrained_dict) 
         model.module.load_state_dict(pretrained_dict, strict=False)
         # model.load_state_dict(checkpoint_dict['autoencoder_state_dict'])
-        # optim.load_state_dict(checkpoint_dict['optimizer_state_dict'])
-        # scheduler.load_state_dict(checkpoint_dict['scheduler_state_dict'])
+        optim.load_state_dict(checkpoint_dict['optimizer_state_dict'])
+        scheduler.load_state_dict(checkpoint_dict['scheduler_state_dict'])
         print('Resuming from epoch %s'%(str(start_epoch)))
     else:
         start_epoch = 0
@@ -336,12 +336,15 @@ if args['mode'] == 'test':
     model_dict.update(pretrained_dict) 
     model.module.load_state_dict(pretrained_dict, strict=False)
     #model.load_state_dict(checkpoint_dict['autoencoder_state_dict'])
-
-    predictions, norm_l1_loss, l2_loss = test_autoencoder_dataloader(device, model, dataloader_test,
+    
+    predictions = test_autoencoder_dataloader(device, model, dataloader_test,
                                                                      shapedata, mm_constant = 1000)
-    torch.save(predictions, os.path.join(prediction_path,'predictions.tch'))
-    torch.save({'norm_l1_loss':norm_l1_loss, 'l2_loss':l2_loss}, os.path.join(prediction_path,'loss.tch'))
 
-    print('autoencoder: normalized loss', norm_l1_loss)
+    # predictions, norm_l1_loss, l2_loss = test_autoencoder_dataloader(device, model, dataloader_test,
+    #                                                                  shapedata, mm_constant = 1000)
+    # torch.save(predictions, os.path.join(prediction_path,'predictions.tch'))
+    # torch.save({'norm_l1_loss':norm_l1_loss, 'l2_loss':l2_loss}, os.path.join(prediction_path,'loss.tch'))
 
-    print('autoencoder: euclidean distance in mm=', l2_loss)
+    # print('autoencoder: normalized loss', norm_l1_loss)
+
+    # print('autoencoder: euclidean distance in mm=', l2_loss)

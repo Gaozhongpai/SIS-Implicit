@@ -94,13 +94,14 @@ class autoencoder_dataset(Dataset):
                     'right_leg', 'left_hand', 'right_hand', 'left_foot', 'right_foot']
             folder = 'mesh_body'
             self.dictionary = torch.load('./{}/body_index.tch'.format(folder))
-            self.nsample = 1000
+            self.num_pts = 6890
         else:
             self.name = ['head', 'left_eye', 'right_eye']
             folder = 'mesh_head'
             self.dictionary = torch.load('./{}/head_index.tch'.format(folder))
-            self.nsample = 1000
+            self.num_pts = 5023
 
+        self.nsample = 1000
         self.map = {}
         self.map_coord = {}
         self.lap = ComLap(shapedata.reference_mesh)
@@ -109,8 +110,8 @@ class autoencoder_dataset(Dataset):
             self.map_coord[name] = Cartesian2Spherical(self.map[name])
 
     def random_submesh(self):
-        index_sub = torch.randperm(6890)[:self.nsample]
-        mask_sub = torch.zeros(6890).bool()
+        index_sub = torch.randperm(self.num_pts)[:self.nsample]
+        mask_sub = torch.zeros(self.num_pts).bool()
         mask_sub[index_sub] = True
 
         N_index = 0
@@ -145,8 +146,8 @@ class autoencoder_dataset(Dataset):
         basename = self.paths[idx]
         verts_init = torch.load(os.path.join(self.root_dir,'points'+'_'+self.points_dataset, basename+'.tch'))
         verts_init = verts_init
-        verts = (verts_init - self.shapedata.mean) / self.shapedata.std
-        return verts 
+        # verts = (verts_init - self.shapedata.mean) # / self.shapedata.std
+        return verts_init 
     
   
 class autoencoder_dataset_generate(Dataset):
