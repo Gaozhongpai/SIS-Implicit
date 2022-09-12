@@ -1,20 +1,20 @@
 
 
-# Learning Local Neighboring Structure for Robust 3D Shape Representation
-![PaiNeural3DMM architecture](images/architecture.png "PaiNeural3DMM architecture")
-This repository is the official implementation of my paper: "Learning Local Neighboring Structure for Robust 3D Shape Representation"
+# Learning Continuous Mesh Representation with Spherical Implicit Surface
+![Architecture of learning SIS representation](images/architecture.png "Architecture of learning SIS representation")
+
+This repository is the official implementation of my paper: "Learning Continuous Mesh Representation with Spherical Implicit Surface"
 # Project Abstract 
-Mesh is a powerful data structure for 3D shapes. Representation learning for 3D meshes is important in many computer vision and graphics applications. The recent success of convolutional neural networks (CNNs) for structured data (e.g., images) suggests the value of adapting insight from CNN for 3D shapes. However, 3D shape data are irregular since each node's neighbors are unordered. Various graph neural networks for 3D shapes have been developed with isotropic filters or predefined local coordinate systems to overcome the node inconsistency on graphs. However, isotropic filters or predefined local coordinate systems limit the representation power. In this paper, we propose a local structure-aware anisotropic convolutional operation (LSA-Conv) that learns adaptive weighting matrices for each node according to the local neighboring structure and performs shared anisotropic filters. In fact, the learnable weighting matrix is similar to the attention matrix in random synthesizer -- a new Transformer model for natural language processing (NLP). Comprehensive experiments demonstrate that our model produces significant improvement in 3D shape reconstruction compared to state-of-the-art methods. 
+As the most common representation for 3D shapes, mesh is often stored discretely with arrays of vertices and faces. However, 3D shapes in the real world are presented continuously. In this paper, we propose to learn a continuous representation for meshes with fixed topology, a common and practical setting in many faces-, hand-, and body-related applications. First, we split the template into multiple closed manifold genus-0 meshes so that each genus-0 mesh can be parameterized onto the unit sphere. Then we learn spherical implicit surface (SIS), which takes a spherical coordinate and a global feature or a set of local features around the coordinate as inputs, predicting the vertex corresponding to the coordinate as an output. Since the spherical coordinates are continuous, SIS can depict a mesh in an arbitrary resolution. SIS representation builds a bridge between discrete and continuous representation in 3D shapes. Specifically, we train SIS networks in a self-supervised manner for two tasks: a reconstruction task and a super-resolution task. Experiments show that our SIS representation is comparable with state-of-the-art methods that are specifically designed for meshes with a fixed resolution and significantly outperforms methods that work in arbitrary resolutions.
 
-[Arxiv link](https://arxiv.org/abs/2004.09995)
 
-![Pai-Conv](images/pai-gcn.png "Pai-Conv operation")
+![Spherical coordinates](images/spherical.png "Spherical coordinates")
 
 ![Results](images/results.png "Results")
 
 # Repository Requirements
 
-This code was written in Pytorch 1.4. We use tensorboardX for the visualisation of the training metrics. We recommend setting up a virtual environment using [Miniconda](https://docs.conda.io/en/latest/miniconda.html). To install Pytorch in a conda environment, simply run 
+This code was written in Pytorch 1.10. We use tensorboardX for the visualisation of the training metrics. We recommend setting up a virtual environment using [Miniconda](https://docs.conda.io/en/latest/miniconda.html). To install Pytorch in a conda environment, simply run 
 
 ```
 $ conda install pytorch torchvision -c pytorch
@@ -84,12 +84,5 @@ The structure of this codebase is borrowed from [Neural3DMM](https://github.com/
 Please consider citing our work if you find it useful:
 
 ```
-@misc{gao2020learning,
-    title={Learning Local Neighboring Structure for Robust 3D Shape Representation},
-    author={Zhongpai Gao and Guangtao Zhai and Juyong Zhang and Junchi Yan and Yiyan Yang and Xiaokang Yang},
-    year={2020},
-    eprint={2004.09995},
-    archivePrefix={arXiv},
-    primaryClass={cs.CV}
-}
+Z Gao, "Learning Continuous Mesh Representation with Spherical Implicit Surface", IEEE International Conference on Automatic Face and Gesture Recognition, FG 2023
 ```
